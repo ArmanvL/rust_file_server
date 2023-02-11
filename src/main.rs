@@ -12,6 +12,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+// Make this configurable through an environment variable
 const FILE_SIZE_LIMIT: usize = 5_000_000;
 
 #[post("/upload")]
