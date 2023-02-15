@@ -11,6 +11,15 @@ use futures_util::stream::TryStreamExt;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use aes_gcm::{
+    aead::{
+        Aead,
+        KeyInit,
+        OsRng,
+    },
+    Aes256Gcm,
+    Nonce,
+};
 
 // Make this configurable through an environment variable
 const FILE_SIZE_LIMIT: usize = 5_000_000;
@@ -50,15 +59,25 @@ async fn upload(mut payload: Multipart) -> Result<HttpResponse, Error> {
         let path = format!("./files/{}", name.unwrap()).to_string();
         let path = Path::new(&path);
         let display = path.display();
-        
+
+        // Time to encrypt the data before storing it on the server
+        let key = Aes256Gcm::generate_key(&mut OsRng);
+        let cipher = Aes256Gcm::new(&key);
+        let nonce = Nonce::from_slice(b"unique nonce");
+        let ciphertext = cipher.encrypt(nonce, bytes.as_ref());
+
         let mut file = match File::create(&path) {
             Err(reason) => { println!("{:?}", reason); todo!() },
             Ok(file) => file,
         };
 
-        match file.write_all(&bytes) {
-            Err(reason) => { println!("{:?}", reason); todo!() },
-            Ok(_) => println!("Successfully wrote to {}", display),
+        if let Ok(val) = ciphertext { 
+            match file.write_all(&val) {
+                Err(reason) => { println!("{:?}", reason); todo!() },
+                Ok(_) => println!("Successfully wrote to {}", display),
+            }
+        } else {
+            unreachable!("Something stupid happened here, I should learn how to Rust better");
         }
     }
 

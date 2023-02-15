@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 actix-multipart = "0.5.0"
 actix-web="4"
+aes-gcm = "0.10.1"
 futures-util = "0.3.26"
