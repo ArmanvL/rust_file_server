@@ -17,21 +17,13 @@ use actix_web::{
     }
 };
 use actix_multipart::Multipart;
+use actix_files;
 use serde::{
     Deserialize,
     Serialize
 };
 use futures_util::stream::TryStreamExt;
 use uuid::Uuid;
-use aes_gcm::{
-    aead::{
-        Aead,
-        KeyInit,
-        OsRng,
-    },
-    Aes256Gcm,
-    Nonce,
-};
 
 // Make this configurable through an environment variable
 const FILE_SIZE_LIMIT: usize = 5_000_000;
@@ -86,24 +78,14 @@ async fn upload(mut payload: Multipart) -> Result<impl Responder, Error> {
         let path = Path::new(&path);
         let display = path.display();
 
-        // Time to encrypt the data before storing it on the server
-        let key = Aes256Gcm::generate_key(&mut OsRng);
-        let cipher = Aes256Gcm::new(&key);
-        let nonce = Nonce::from_slice(b"unique nonce");
-        let ciphertext = cipher.encrypt(nonce, bytes.as_ref());
-
         let mut file = match File::create(&path) {
             Err(reason) => { println!("{:?}", reason); todo!() },
             Ok(file) => file,
         };
 
-        if let Ok(val) = ciphertext { 
-            match file.write_all(&val) {
-                Err(reason) => { println!("{:?}", reason); todo!() },
-                Ok(_) => println!("Successfully wrote to {}", display),
-            }
-        } else {
-            unreachable!("Something stupid happened here, I should learn how to Rust better");
+        match file.write_all(&bytes) {
+            Err(reason) => { println!("{:?}", reason); todo!() },
+            Ok(_) => println!("Successfully wrote to {}", display),
         }
 
         uploaded_files.push(UploadedFile { id, original_file_name: name.unwrap().to_string() })
@@ -117,7 +99,6 @@ async fn upload(mut payload: Multipart) -> Result<impl Responder, Error> {
 #[derive(Debug, Deserialize)]
 struct GetFileRequesst {
     id: String,
-    // todo: Add authentication token?
 }
 
 #[get("/file")]
@@ -125,23 +106,16 @@ async fn get_file(params: Query<GetFileRequesst>) -> Result<impl Responder, Erro
     let path = format!("./files/{}", params.id).to_string();
     let path = Path::new(&path);
 
-    let key = Aes256Gcm::generate_key(&mut OsRng);
-    let cipher = Aes256Gcm::new(&key);
-    let nonce = Nonce::from_slice(b"unique nonce");
+    let file = actix_files::NamedFile::open_async(path).await;
+    let mut file = match file {
+        Ok(val) => val,
+        _ => todo!(),
+    };
 
-    let mut file = File::open(path)?;
     let mut buffer = Vec::<u8>::new();
     file.read_to_end(&mut buffer)?;
 
-    let buffer = &buffer[..];
-    let decrypted = cipher.decrypt(nonce, buffer);
-
-    match decrypted {
-        Ok(val) => println!("{:?}", val),
-        Err(err) => println!("{:?}", err),
-    };
-    
-    return Ok("OK");
+    return Ok(file);
 }
 
 #[actix_web::main]
